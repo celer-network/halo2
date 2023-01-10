@@ -96,10 +96,9 @@ impl Circuit<pallas::Base> for MyCircuit {
     }
 }
 
-fn main() {
+fn process_one(k: u32, sha_count: u64) -> Result<(), Error> {
     // Initialize the polynomial commitment parameters
-    let k = 17;
-    let sha_count = 16;
+    println!("process sha, k:{}, sha count:{}", k, sha_count);
     let params_path_str = format!("./sha256_params_k_{}", k);
     let params_path = Path::new(params_path_str.as_str());
     if File::open(&params_path).is_err() {
@@ -147,4 +146,10 @@ fn main() {
     let proof: Vec<u8> = transcript.finalize();
     let mut file = File::create(&proof_path).expect("Failed to create sha256_proof");
     file.write_all(&proof[..]).expect("Failed to write proof");
+
+    Ok(())
+}
+
+fn main() {
+    process_one(22, 512).unwrap();
 }
