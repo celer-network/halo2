@@ -213,5 +213,5 @@ fn process_one(k: u32, sha_count: u64) -> Result<(), Error> {
 }
 
 fn main() {
-    process_one(21, 256).unwrap();
+    process_one(22, 512).unwrap();
 }
