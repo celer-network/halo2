@@ -1,3 +1,4 @@
+use ark_std::{end_timer, start_timer};
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, Circuit, ConstraintSystem, Error},
@@ -7,11 +8,7 @@ use halo2_proofs::{
 use halo2curves::pasta::{pallas, EqAffine};
 use rand::rngs::OsRng;
 
-use std::{
-    fs::File,
-    io::{prelude::*, BufReader},
-    path::Path,
-};
+use std::{env, fs::File, io::{prelude::*, BufReader}, path::Path};
 
 use halo2_gadgets::sha256::{BlockWord, Sha256, Table16Chip, Table16Config, BLOCK_SIZE};
 
@@ -53,23 +50,7 @@ impl Circuit<pallas::Base> for MyCircuit {
         let table16_chip = Table16Chip::construct(config);
 
         let input = [
-            BlockWord(Value::known(0b10101010100100110001111101011110)),
-            BlockWord(Value::known(0b11100101100001110011010100100111)),
-            BlockWord(Value::known(0b00001000001000011011001101110010)),
-            BlockWord(Value::known(0b00101000011001101101100010001000)),
-            BlockWord(Value::known(0b00101101000110010100100010010000)),
-            BlockWord(Value::known(0b10010101001100101100111110001010)),
-            BlockWord(Value::known(0b11000010101100111110111100010100)),
-            BlockWord(Value::known(0b01001010111010000000010000110011)),
-            BlockWord(Value::known(0b01100011110100011101001101110010)),
-            BlockWord(Value::known(0b10001011010010011111000100001100)),
-            BlockWord(Value::known(0b01111100110101111000110000111000)),
-            BlockWord(Value::known(0b00101000100111001000000000010010)),
-            BlockWord(Value::known(0b01000111011101000111001110000111)),
-            BlockWord(Value::known(0b10011111001110110101001100010110)),
-            BlockWord(Value::known(0b10011111001010100110011101111011)),
-            BlockWord(Value::known(0b01111111101111101101000011000111)),
-            BlockWord(Value::known(0b10000000000000000000000000000000)),
+            BlockWord(Value::known(0b01111000100000000000000000000000)),
             BlockWord(Value::known(0b00000000000000000000000000000000)),
             BlockWord(Value::known(0b00000000000000000000000000000000)),
             BlockWord(Value::known(0b00000000000000000000000000000000)),
@@ -84,12 +65,12 @@ impl Circuit<pallas::Base> for MyCircuit {
             BlockWord(Value::known(0b00000000000000000000000000000000)),
             BlockWord(Value::known(0b00000000000000000000000000000000)),
             BlockWord(Value::known(0b00000000000000000000000000000000)),
-            BlockWord(Value::known(0b00000000000000000000001000000000)),
+            BlockWord(Value::known(0b00000000000000000000000000001000)),
         ];
 
+        // sha one block per loop
         for _i in 0..self.sha_count {
-            let out = Sha256::digest(table16_chip.clone(), layouter.namespace(|| "'publick key'"), &input)?;
-            //println!("out: {:?}", out)
+            let _ = Sha256::digest(table16_chip.clone(), layouter.namespace(|| "'sha one'"), &input)?;
         }
 
         Ok(())
@@ -102,10 +83,10 @@ fn process_one(k: u32, sha_count: u64) -> Result<(), Error> {
     let params_path_str = format!("./sha256_params_k_{}", k);
     let params_path = Path::new(params_path_str.as_str());
     if File::open(&params_path).is_err() {
-        println!("start get param {:?}", chrono::offset::Utc::now());
+        let timer_get_param = start_timer!(|| format!("build params with K = {}", k));
         let params: ParamsIPA<EqAffine> = ParamsIPA::new(k);
         let mut buf = Vec::new();
-        println!("end   get param {:?}", chrono::offset::Utc::now());
+        end_timer!(timer_get_param);
 
         params.write(&mut buf).expect("Failed to write params");
         let mut file = File::create(&params_path).expect("Failed to create sha256_params");
@@ -121,10 +102,10 @@ fn process_one(k: u32, sha_count: u64) -> Result<(), Error> {
     let empty_circuit: MyCircuit = MyCircuit {sha_count};
 
     // Initialize the proving key
-    println!("start get pk vk {:?}", chrono::offset::Utc::now());
+    let timer_get_pk_vk = start_timer!(|| "build pk vk");
     let vk = keygen_vk(&params, &empty_circuit).expect("keygen_vk should not fail");
     let pk = keygen_pk(&params, vk, &empty_circuit).expect("keygen_pk should not fail");
-    println!("end   get pk vp {:?}", chrono::offset::Utc::now());
+    end_timer!(timer_get_pk_vk);
 
     let circuit: MyCircuit = MyCircuit {sha_count};
 
@@ -132,7 +113,7 @@ fn process_one(k: u32, sha_count: u64) -> Result<(), Error> {
     let proof_path_str = format!("./sha256_proof_k_{}_count_{}", k, sha_count);
     let proof_path = Path::new(proof_path_str.as_str());
     let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
-    println!("start create proof {:?}", chrono::offset::Utc::now());
+    let timer_create_proof = start_timer!(|| "create proof");
     create_proof::<IPACommitmentScheme<_>, ProverIPA<_>, _, _, _, _>(
         &params,
         &pk,
@@ -142,14 +123,29 @@ fn process_one(k: u32, sha_count: u64) -> Result<(), Error> {
         &mut transcript,
     )
         .expect("proof generation should not fail");
-    println!("end   get proof {:?}", chrono::offset::Utc::now());
+    end_timer!(timer_create_proof);
     let proof: Vec<u8> = transcript.finalize();
     let mut file = File::create(&proof_path).expect("Failed to create sha256_proof");
     file.write_all(&proof[..]).expect("Failed to write proof");
 
+    use halo2_proofs::poly::VerificationStrategy;
+    let strategy = AccumulatorStrategy::new(&params);
+    let mut transcript = Blake2bRead::<_, _, Challenge255<_>>::init(&proof[..]);
+    let timer_verify = start_timer!(|| "verify");
+    let strategy = verify_proof::<IPACommitmentScheme<_>, VerifierIPA<_>, _, _, _>(
+        &params,
+        pk.get_vk(),
+        strategy,
+        &[&[]],
+        &mut transcript,
+    ).unwrap();
+    end_timer!(timer_verify);
     Ok(())
 }
 
 fn main() {
-    process_one(22, 512).unwrap();
+    let args: Vec<String> = env::args().collect();
+    let k: u32 = args[1].parse().unwrap();
+    let sha_block: u64 = args[2].parse().unwrap();
+    process_one(k, sha_block).unwrap();
 }
