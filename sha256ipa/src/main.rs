@@ -132,6 +132,8 @@ fn process_one(k: u32, sha_count: u64) -> Result<(), Error> {
     let mut file = File::create(&proof_path).expect("Failed to create sha256_proof");
     file.write_all(&proof[..]).expect("Failed to write proof");
 
+    println!("proof len: {}", proof.len());
+
     use halo2_proofs::poly::VerificationStrategy;
     let strategy = AccumulatorStrategy::new(&params);
     let mut transcript = Blake2bRead::<_, _, Challenge255<_>>::init(&proof[..]);
