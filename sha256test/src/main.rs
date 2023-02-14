@@ -27,6 +27,7 @@ use halo2curves::bn256::{Bn256, Fr, G1Affine};
 use rand_core::OsRng;
 use halo2_proofs::poly::kzg::multiopen::VerifierSHPLONK;
 use halo2_proofs::poly::kzg::strategy::AccumulatorStrategy;
+use sha256test::inputs::sha256exp::{INPUT_1025, INPUT_129, INPUT_17, INPUT_2, INPUT_257, INPUT_3, INPUT_33, INPUT_5, INPUT_513, INPUT_65, INPUT_9};
 
 #[derive(Default)]
 struct MyCircuit {
@@ -52,28 +53,31 @@ impl Circuit<Fr> for MyCircuit {
     ) -> Result<(), Error> {
         Table16Chip::load(config.clone(), &mut layouter)?;
         let table16_chip = Table16Chip::construct(config);
-        let input = [
-            BlockWord(Value::known(0b01111000100000000000000000000000)),
-            BlockWord(Value::known(0b00000000000000000000000000000000)),
-            BlockWord(Value::known(0b00000000000000000000000000000000)),
-            BlockWord(Value::known(0b00000000000000000000000000000000)),
-            BlockWord(Value::known(0b00000000000000000000000000000000)),
-            BlockWord(Value::known(0b00000000000000000000000000000000)),
-            BlockWord(Value::known(0b00000000000000000000000000000000)),
-            BlockWord(Value::known(0b00000000000000000000000000000000)),
-            BlockWord(Value::known(0b00000000000000000000000000000000)),
-            BlockWord(Value::known(0b00000000000000000000000000000000)),
-            BlockWord(Value::known(0b00000000000000000000000000000000)),
-            BlockWord(Value::known(0b00000000000000000000000000000000)),
-            BlockWord(Value::known(0b00000000000000000000000000000000)),
-            BlockWord(Value::known(0b00000000000000000000000000000000)),
-            BlockWord(Value::known(0b00000000000000000000000000000000)),
-            BlockWord(Value::known(0b00000000000000000000000000001000)),
-        ];
-
-        for _i in 0..self.sha_count {
-            let _ = Sha256::digest(table16_chip.clone(), layouter.namespace(|| "one block"), &input)?;
-        }
+        match self.sha_count {
+            2 => Sha256::digest(table16_chip.clone(), layouter.namespace(|| "'sha one'"),
+                                &INPUT_2)?,
+            3 => Sha256::digest(table16_chip.clone(), layouter.namespace(|| "'sha one'"),
+                                &INPUT_3)?,
+            5 => Sha256::digest(table16_chip.clone(), layouter.namespace(|| "'sha one'"),
+                                &INPUT_5)?,
+            9 => Sha256::digest(table16_chip.clone(), layouter.namespace(|| "'sha one'"),
+                                &INPUT_9)?,
+            17 => Sha256::digest(table16_chip.clone(), layouter.namespace(|| "'sha one'"),
+                                 &INPUT_17)?,
+            33 => Sha256::digest(table16_chip.clone(), layouter.namespace(|| "'sha one'"),
+                                 &INPUT_33)?,
+            65 => Sha256::digest(table16_chip.clone(), layouter.namespace(|| "'sha one'"),
+                                 &INPUT_65)?,
+            129 => Sha256::digest(table16_chip.clone(), layouter.namespace(|| "'sha one'"),
+                                  &INPUT_129)?,
+            257 => Sha256::digest(table16_chip.clone(), layouter.namespace(|| "'sha one'"),
+                                  &INPUT_257)?,
+            513 => Sha256::digest(table16_chip.clone(), layouter.namespace(|| "'sha one'"),
+                                  &INPUT_513)?,
+            1025 => Sha256::digest(table16_chip.clone(), layouter.namespace(|| "'sha one'"),
+                                   &INPUT_1025)?,
+            _ => panic!("unexpected sha count: {}", self.sha_count),
+        };
 
         Ok(())
     }
@@ -136,6 +140,8 @@ fn process_one(k: u32, sha_count: u64) -> Result<(), Error> {
     let proof_path = Path::new(proof_path_str.as_str());
     let mut file = File::create(&proof_path).expect("Failed to create sha256_proof");
     file.write_all(&proof[..]).expect("Failed to write proof");
+
+    println!("proof len: {}", proof.len());
 
     use halo2_proofs::poly::VerificationStrategy;
     let timer_verify = start_timer!(|| "verify");
